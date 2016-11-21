@@ -9,6 +9,8 @@ import java.io.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.apache.commons.net.ftp.FTP;
+import org.apache.commons.net.ftp.FTPClient;
 
 /**
  *  Bu sinif, uygulama acildigi zaman
@@ -16,13 +18,16 @@ import java.util.logging.Logger;
  *  bu aktif gorev icin bir ip ve file path alir.
  *  Arka planda bir thread kullanarak
  *  bu aktif gorevi yani verilen dosyayi verilen ip ye gonderir.
- * @author mutlu koktemir
+ * @author mutlu koktemir & osman suzer
  */
 public class ActiveJobThread implements Runnable{
     
     private Thread thread;
     private String ip;
     private String filePath;
+    
+    private String username;
+    private String password;
     
     /**
      *  Thread'i baslatir.
@@ -39,46 +44,80 @@ public class ActiveJobThread implements Runnable{
         
     }
     
+    public ActiveJobThread(String ip, String filepath, String username, String password)
+    {
+        this.ip = ip;
+        filePath = filepath;
+        this.username = username;
+        this.password = password;
+        thread = new Thread(this,"other");
+        thread.start();
+    }
     
     @Override
     public void run() {
         
-        //URI uri = new URI(ip);
-        
         try {
-        	
+        
+            //to write link format
+            //URI uri = new URI(ip);
             URI uri = new URI("xxx://" + ip);
-            String host = uri.getHost();
+            //get host of server
+            String server = uri.getHost();
+            //get port of the program
             int port = uri.getPort();
-
-            Socket sock = new Socket(host, port);
-
-            File myFile = new File(filePath);
-            byte[] myArray = new byte[(int) myFile.length()];
-
-            FileInputStream fileInputStream = new FileInputStream(myFile);
-            BufferedInputStream buffredInputStream = new BufferedInputStream(fileInputStream);
-            buffredInputStream.read(myArray, 0, myArray.length);
-
-            OutputStream outputStream = sock.getOutputStream();
-
-            //gönderim başladı
-            outputStream.write(myArray, 0, myArray.length);
-            //gönderin sona erdi
-
-            outputStream.flush();
-
-            sock.close();
             
-        } catch ( URISyntaxException | IOException ex ) {
+            //create a FTPClient to connect to server
+            FTPClient ftpClient = new FTPClient();
+            try {
+                //client connects to server by using server host and port
+                ftpClient.connect(server, port);
+                //client logins if it is valid
+                ftpClient.login(this.username, this.password);
+                
+                ftpClient.enterLocalPassiveMode();
+                ftpClient.setFileType(FTP.BINARY_FILE_TYPE);
+                
+                File myfile = new File(this.filePath);
+                InputStream inputStream = new FileInputStream(myfile);
+                
+                //starts uploading to server by using storeFileStream.
+                System.out.println("Start uploading file : " + myfile.getName());
+                OutputStream outputStream = ftpClient.storeFileStream(myfile.getName());
+                byte[] bytesIn = new byte[4096];
+                int read = 0;
+                
+                while ((read = inputStream.read(bytesIn)) != -1) {
+                    outputStream.write(bytesIn, 0, read);
+                }
+                
+                inputStream.close();
+                outputStream.close();
+
+                boolean completed = ftpClient.completePendingCommand();
+                if (completed) {
+                    System.out.printf("The file %s is uploaded successfully.\n", myfile.getName());
+                }
+                
+                ftpClient.logout();
+                ftpClient.disconnect();
+                
+            } catch (IOException ex) {
+                System.out.println("Error: " + ex.getMessage());
+                ex.printStackTrace();
+            } finally {
+                if (ftpClient.isConnected()) {
+                    try {
+                        ftpClient.logout();
+                        ftpClient.disconnect();
+                    } catch (IOException ex) {
+                        Logger.getLogger(ActiveJobThread.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                }
+            }
+        }catch (URISyntaxException ex) {
             Logger.getLogger(ActiveJobThread.class.getName()).log(Level.SEVERE, null, ex);
         }
-        
-        
-        
-        
-        
-        
     }
 }
 
